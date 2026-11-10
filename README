@@ -1,0 +1,165 @@
+# Agente SRE para Análisis Automático y Gestión de Incidentes
+
+Este repositorio contiene la implementación de **SRE-Agent**, un Agente Inteligente basado en la arquitectura **ReAct (Reasoning and Acting)**. Está diseñado para automatizar el triaje, diagnóstico, notificación y registro de incidentes en entornos de infraestructura TI y microservicios.
+
+## 👥 Equipo (Diplomado IA Generativa - Módulo 3)
+* **Adrian Saldias Zambrana**
+* **Nhamer Mamani Condori**
+* **Alex Olivera Colque**
+
+## 1. Problema y Usuario Objetivos
+
+### El Problema
+En los entornos modernos, los ingenieros de sistemas se enfrentan a un volumen masivo de logs fragmentados y métricas cuando ocurre un fallo. La identificación manual de causas raíz y la correlación de logs a nivel de red/servidor consumen tiempo crítico, incrementando el **MTTR (Mean Time to Resolution)** y el riesgo de errores humanos durante crisis operativas.
+Los equipos de Soporte TI y SRE (Site Reliability Engineering) invierten entre 30 y 45 minutos por incidente analizando volcados masivos de logs (`.log`, `.txt`) para encontrar la causa raíz de un fallo. Este proceso manual retrasa el tiempo de respuesta (MTTR), dificulta la correlación con métricas de infraestructura y es propenso a errores humanos bajo presión.
+
+### El Usuario
+* **Ingenieros SRE (Site Reliability Engineering)** y **DevOps**: Quienes necesitan automatizar la primera respuesta a incidentes y el diagnóstico de causas raíz.
+* **Equipos de Soporte Técnico y Operaciones IT**: Que requieren validar errores recurrentes e informar automáticamente a las partes interesadas sin revisar manualmente miles de líneas de logs.
+
+
+## ✨ Novedades de la Última Versión
+El prototipo actual incluye características avanzadas integradas directamente en el cuaderno de ejecución:
+1. **Soporte Multi-Archivo:** Ingesta y procesa simultáneamente múltiples archivos de logs, permitiendo al agente correlacionar fallos en cadena (ej. Base de Datos -> Autenticación -> API Gateway).
+2. **Generación Gráfica de Arquitectura:** Integración nativa con `graphviz` para renderizar el diagrama del flujo ReAct y los puntos de control directamente en el notebook.
+3. **Mecanismo HITL y Notificaciones SMTP:** Un sub-agente dedicado que exige **Aprobación Humana (Human-in-the-Loop)** antes de enviar reportes técnicos por correo electrónico (usando autenticación segura con App Passwords de Gmail).
+4. **Benchmarking en Tiempo Real:** Un script de evaluación que ejecuta 5 casos de prueba directamente contra el LLM en hilos aislados, calculando la precisión de selección de herramientas (`debe_usar` / `no_debe_usar`) y mostrando una tabla interactiva en Pandas.
+
+
+## 2. Clasificación: ¿Por qué es un Workflow y no un Agente?
+
+Este sistema está diseñado como un **Workflow** basado en el patrón **ReAct (Reasoning + Acting)** por las siguientes razones:
+
+1. **Toma de decisiones dinámica (Razonamiento en bucle)**: si bien es un *workflow* determinista, el agente evalúa la entrada del usuario y el contenido de los archivos de registro para decidir dinámicamente qué herramientas invocar y en qué orden.
+2. **Evaluación de condiciones no lineales**:
+   * Si un log indica un error de timeout o recursos, el agente el consulta la telemetría del servidor (`consultar_metricas_servidor`).
+   * Si el log no contiene errores críticos, el agente no invoca herramientas innecesarias como el registro de tickets o el envío de correos.
+3. **Manejo de errores y guardrails**: Capacidad de razonar ante fallos de herramientas (archivos inexistentes o errores HTTP) y tomar caminos alternativos.
+4. **Human-in-the-Loop (HITL)**: Introduce interrupción y supervisión humana cuando detecta acciones críticas (como enviar notificaciones por correo o registrar tickets).
+
+---
+
+## 3. Arquitectura del Sistema
+
+A continuación se esquematiza el flujo de datos y razonamiento agéntico:
+
+```
+                  +-------------------------------+
+                  |            Usuario            |
+                  | (Sube Logs / Pide Análisis)   |
+                  +---------------+---------------+
+                                  |
+                                  v
+                  +---------------+---------------+
+                  |     Orquestador Agéntico      |<------------------+
+                  |  (Gemini 3.5 + Prompt SRE)    |                   |
+                  +-------+---------------+-------+                   |
+                          |               |                           |
+       +------------------+               +------------------+        | (Bucle ReAct)
+       |                                                     |        |
+       v                                                     v        |
++------+-----------------------+             +---------------+--------+------+
+| Herramienta 1:               |             | Herramienta 2:                |
+| analizar_log_local           |             | consultar_metricas_servidor   |
++------+-----------------------+             +---------------+---------------+
+       |                                                     |
+       +------------------+               +------------------+
+                          |               |
+                          v               v
+                  +-------+---------------+-------+
+                  | Aprobación Humana (HITL)      |
+                  | (Para notificaciones/tickets) |
+                  +---------------+---------------+
+                                  |
+                        +---------+---------+
+                        |                   |
+               (Aprobado)                   (Rechazado)
+                        v                   v
+        +---------------+-------+   +-------+---------------+
+        | Herramienta 3:        |   | Devuelve control      |
+        | enviar_correo / Ticket|   | al Agente             |
+        +---------------+-------+   +-----------------------+
+                        |
+                        v
+        +---------------+---------------+
+        | Generación de Respuesta Final |
+        |   (Diagnóstico con citas)     |
+        +-------------------------------+
+```
+
+---
+
+## 4. Los 5 Primitivos del Agente
+El sistema utiliza un **Bucle ReAct** orquestado con **LangGraph** y el modelo **Gemini 3.5 Flash Lite** de Google.
+El diseño del agente se sostiene sobre los 5 primitivos fundamentales:
+
+1. **Instrucciones (System Prompt)**:
+   * Define el rol de **SRE-Agent** y establece un protocolo estricto de 4 pasos (inspeccionar log, correlacionar métricas, registrar ticket, formular causa raíz).
+   * Contiene reglas estrictas (prohibición de inventar excepciones/códigos HTTP y protección de datos sensibles como credenciales o tokens).
+2. **Herramientas (Tools)**:
+   * `analizar_log_local`: Lee y filtra trazas de error (`ERROR`, `WARN`, `FATAL`, `TIMEOUT`) con números de línea exactos.
+   * `consultar_metricas_servidor`: Consulta la telemetría en tiempo real (CPU, RAM, red).
+   * `enviar_correo_incidencia`: Notifica por SMTP al equipo de guardia tras la confirmación.
+3. **Memoria (Memory)**:
+   * Utiliza `InMemorySaver` y `InMemoryStore` para mantener el contexto del hilo de discusión (`thread_id`), recordar trazas analizadas previamente y conservar el estado de notificaciones pendientes.
+4. **Estado (State)**:
+   * Gestionado mediante la estructura de mensajes de LangGraph (`messages`), almacenando el historial de pensamientos de la IA, invocación de herramientas (`tool_calls`), respuestas de herramientas (`tool_outputs`) y flags del sistema como `incidencia_detectada`.
+5. **Control (Governance & Guardrails)**:
+   * **Human-in-the-Loop (HITL)**: Mediante `HumanInTheLoopMiddleware`, interrumpe el flujo antes de ejecutar acciones de salida destructivas/notificaciones externas hasta recibir confirmación explícita (`approve`/`reject`).
+   * **Límites de Ejecución**: `ModelCallLimitMiddleware` (máx. 6 llamadas al modelo) y `ToolCallLimitMiddleware` (máx. 4 llamadas a herramientas) para prevenir bucles infinitos y consumo descontrolado de tokens.
+   * **Validación de Archivos**: Guardrail de entrada que valida extensiones `.log`/`.txt`.
+
+---
+
+## 5. Guía de Ejecución Paso a Paso
+
+**Requisitos previos:**
+* Entorno de Google Colab (Recomendado) o Python 3.10+ local.
+* Clave de API de Google Gemini.
+* (Opcional) Contraseña de Aplicación de Gmail para habilitar las notificaciones por correo.
+
+### Paso 1: Instalación de Dependencias
+Ejecuta las siguientes instrucciones para instalar las librerías necesarias:
+
+```bash
+pip install -q -U google-genai requests
+pip install -q langchain-google-genai langgraph langchain-core graphviz pandas
+```
+
+### Paso 2: Configuración de Variables de Entorno / Secretos
+En Google Colab, añade tu clave `GEMINI_API_KEY` en el panel de **Secretos (UserData)**. Si ejecutas localmente, exporta la variable:
+
+```bash
+export GEMINI_API_KEY="tu_api_key_aqui"
+```
+
+### Paso 3: Ejecución del Código Principal
+
+1. **Carga e Ingesta de Logs**:
+   Ejecuta el bloque de subida de archivos y selecciona uno o varios archivos `.log` o `.txt` cuando el sistema lo solicite.
+
+2. **Ejecución del Análisis Agéntico**:
+   El agente tomará los archivos cargados, analizará las líneas críticas, consultará métricas simuladas y generará una recomendación diagnóstica.
+
+3. **Interactividad Human-in-the-Loop (HITL)**:
+   Si el análisis detecta un error grave, el agente pausará la ejecución e intentará enviar un correo. El sistema requerirá confirmación explícita para reanudar la ejecución:
+
+```python
+# Ejemplo de código de aprobación en el flujo:
+r = notificador.invoke(
+    Command(resume={"decisions": [{"type": "approve", "message": "Enviar correo"}]}), 
+    cfg
+)
+```
+
+4. **Evaluación de Casos de Prueba**:
+   Ejecuta la celda final para correr el *benchmark* automático. Verás cómo el agente resuelve 5 casos aislados (incluyendo rechazos de seguridad) y genera la tabla de aciertos.
+   
+
+   ## 📊 Casos de Prueba y Evaluación
+El sistema incluye una validación con 5 escenarios que demuestran la robustez del agente:
+1. **Nominal:** Detección de fallos en un solo log sin alucinaciones.
+2. **Correlación:** Cruce de logs de API Gateway con telemetría de CPU/RAM.
+3. **Acción:** Creación de un tique formal previa extracción de errores.
+4. **Error Controlado:** Manejo correcto y respuesta amable al intentar leer un archivo que no existe, sin que el código falle.
+5. **Rechazo (Guardrails):** Bloqueo de peticiones maliciosas o destructivas (ej. intentar formatear bases de datos o inyectar formatos `.json`).
