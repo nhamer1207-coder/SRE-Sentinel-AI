@@ -1,0 +1,4 @@
+2026-11-05 09:30:00 INFO [Database] Abriendo pool de conexiones PostgreSQL (max=50).
+2026-11-05 09:45:15 WARN [Database] Pool de conexiones al 90% de capacidad.
+2026-11-05 09:50:00 ERROR [Database] PostgresConnectionTimeout: Se agotaron las conexiones disponibles en el pool tras 50 concurrencias.
+2026-11-05 09:50:02 CRITICAL [Database] Excepción no controlada en transacción de escritura principal.

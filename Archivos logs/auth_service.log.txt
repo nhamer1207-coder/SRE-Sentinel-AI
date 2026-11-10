@@ -1,0 +1,4 @@
+2026-11-05 10:15:22 INFO [AuthService] Inicio de sesión exitoso para el usuario admin_sre.
+2026-11-05 10:18:45 WARN [AuthService] Intento de autenticación fallido desde IP 192.168.1.50.
+2026-11-05 10:20:00 ERROR [AuthService] ConnectionPoolTimeoutException: No se pudo conectar al servidor de identidad LDAP.
+2026-11-05 10:20:05 CRITICAL [AuthService] Fallo crítico en la autenticación centralizada. Servicio degradado.

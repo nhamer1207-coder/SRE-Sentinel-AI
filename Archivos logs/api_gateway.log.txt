@@ -1,0 +1,4 @@
+2026-11-05 11:00:10 INFO [APIGateway] Enrutando petición GET /api/v1/recursos hacia srv-api-gateway.
+2026-11-05 11:05:30 WARN [APIGateway] Alta latencia detectada en el nodo srv-api-gateway (850ms).
+2026-11-05 11:10:12 ERROR [APIGateway] HTTP 504 Gateway Timeout: El servicio backend no respondió a tiempo.
+2026-11-05 11:10:15 ERROR [APIGateway] HTTP 502 Bad Gateway: Conexión rechazada por el contenedor upstream.

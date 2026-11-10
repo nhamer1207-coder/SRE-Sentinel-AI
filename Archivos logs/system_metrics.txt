@@ -1,0 +1,8 @@
+--- REPORTE DE TELEMETRÍA DEL NODO ---
+Timestamp: 2026-11-05T12:00:00Z
+Host: srv-api-gateway
+Estado: ADVERTENCIA
+CPU Uso Porcentaje: 98.5%
+Memoria Disponible MB: 128 MB
+Errores de Red (Paquetes descartados): 1420
+Observación: Saturación crítica de recursos de hardware.
